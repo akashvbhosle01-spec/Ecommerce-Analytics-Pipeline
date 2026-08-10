@@ -11,8 +11,6 @@ TEMP_GCS_BUCKET = "ecommerce-databricks-temp"
 GCP_SECRET_SCOPE = "gcp-secrets"
 GCP_SECRET_KEY = "gcp-sa-key"
 
-# COMMAND ----------
-
 from pyspark.sql.functions import to_timestamp, coalesce, lit, when, date_format,current_timestamp, col
 from pyspark.sql.types import DoubleType
 
@@ -23,12 +21,7 @@ prod = spark.read.format("delta").load(BRONZE_PATH + "products")
 promo = spark.read.format("delta").load(BRONZE_PATH + "promotions")
 store = spark.read.format("delta").load(BRONZE_PATH + "stores")
 
-
-# COMMAND ----------
-
 trn.display()
-
-# COMMAND ----------
 
 from pyspark.sql.functions import col, to_timestamp, coalesce, lit, current_timestamp
 from pyspark.sql.types import DoubleType, TimestampType
@@ -45,8 +38,6 @@ trn_Clean = (trn
 display(trn_Clean)
 print("Silver Transactions Count:", trn_Clean.count())
 
-# COMMAND ----------
-
 cust_clean = (cust
     .dropDuplicates(['customer_id'])
     .withColumn("signup_date", col("signup_date").cast("date"))
@@ -55,8 +46,6 @@ cust_clean = (cust
 )
 display(cust_clean)
 print("✅ cust_clean count:", cust_clean.count())
-
-# COMMAND ----------
 
 silver = (trn_Clean.alias("t")
           .join(cust.alias("c"), "customer_id", "left")
@@ -78,8 +67,6 @@ silver = (silver
 display(silver)
 print("✅ Silver Fact Table Count:", silver.count())
 
-# COMMAND ----------
-
 from pyspark.sql.functions import col, date_format, when, lit, current_timestamp
 
 silver = (trn_Clean.alias("t")
@@ -98,7 +85,7 @@ silver = (trn_Clean.alias("t")
 )
 
 silver = (silver
-          # 🔥 FIX: 'transation_date' -> 'transaction_date' (typo सुधारा)
+          #  FIX: 'transation_date' -> 'transaction_date' (typo सुधारा)
           .withColumn("transaction_date", date_format(col("t.transaction_date"), "yyyy-MM-dd"))
           .withColumn("is_valid_store", when(col("s.location").isNotNull(), lit(True)).otherwise(lit(False)))
           .withColumn("is_valid_customer", when(col("c.name").isNotNull(), lit(True)).otherwise(lit(False)))
@@ -112,12 +99,9 @@ silver = (silver
 
 display(silver)
 print("✅ Silver Table Count (All 6 Tables Joined):", silver.count())
-print("\n📊 Columns in Silver Table:")
+print("\n Columns in Silver Table:")
 print(silver.columns)
 
-# COMMAND ----------
-
-# ---------- SILVER TABLE JOIN + TRANSFORM ----------
 silver = (trn_Clean.alias("t")
           .join(cust.alias("c"), "customer_id", "left")
           .join(prod.alias("p"), "product_id", "left")
@@ -159,24 +143,15 @@ silver = (silver
 display(silver)
 print("✅ Silver Count:", silver.count())
 
-# 🔥 FINAL SAVE (1 LINE - कोई ERROR नहीं)
 silver.write.mode("overwrite").partitionBy("transaction_date").format("delta").saveAsTable("workspace.default.transactions_enriched")
 
 print("🎉 Silver Table Successfully Saved!")
-
-# COMMAND ----------
 
 silver.write.mode("overwrite") \
       .partitionBy("transaction_date") \
       .format("delta") \
       .saveAsTable("workspace.default.transactions_enriched")
 
-# COMMAND ----------
-
-# MAGIC %sql
-# MAGIC SELECT * FROM workspace.default.transactions_enriched LIMIT 5;
-
-# COMMAND ----------
 
 from pyspark.sql.functions import to_date, col, when
 
@@ -191,6 +166,4 @@ silver = silver.withColumn(
 )
 
 display(silver.select("transaction_id", "promo_active", "promo_start_date", "promo_end_date", "promo_in_range"))
-
-# COMMAND ----------
 
