@@ -1,4 +1,3 @@
-# Databricks notebook source
 RAW_PATH = "/Volumes/workspace/default/workspace/"
 BRONZE_PATH = "/Volumes/workspace/default/workspace/bronze/"
 SILVER_PATH = "/Volumes/workspace/default/workspace/silver/"
@@ -11,53 +10,32 @@ TEMP_GCS_BUCKET = "ecommerce-databricks-temp"
 GCP_SECRET_SCOPE = "gcp-secrets"
 GCP_SECRET_KEY = "gcp-sa-key"
 
-# COMMAND ----------
-
 gcp_sa_key = dbutils.secrets.get(scope=GCP_SECRET_SCOPE, key=GCP_SECRET_KEY)
 with open ("/Volumes/workspace/default/workspace/gifted-decker-503209-k7-35a4e887841c.json", "w") as f:
     f.write(gcp_sa_key)
 spark.conf.set("spark.hadoop.google.cloud.auth.service.account.enabled", "True")
 spark.conf.set("spark.hadoop.google.cloud.auth.service.account.json.keyfile", "/Volumes/workspace/default/workspace/gifted-decker-503209-k7-35a4e887841c.json")
 
-
-# COMMAND ----------
-
-# अपनी Notebook में मौजूद सभी Variables की List देखें
-%who_ls DataFrame
-
-# COMMAND ----------
-
-# MAGIC %fs ls /Volumes/workspace/default/workspace/gold/
-
-# COMMAND ----------
-
-# 1️⃣ Silver Table को Catalog से Read करें (यह पक्का मौजूद है)
 silver = spark.sql("SELECT * FROM workspace.default.transactions_enriched")
 
-# 2️⃣ Daily Revenue Gold Table बनाएं (अगर नहीं है तो)
 from pyspark.sql.functions import sum, round
 
 gold_daily_revenue = (silver.groupBy("transaction_date")
                       .agg(round(sum("final_amount"), 2).alias("revenue"))
                       .orderBy("transaction_date"))
 
-# 3️⃣ Gold Table को Delta में Save करें (PATH_NOT_FOUND ठीक हो जाएगा)
 gold_daily_revenue.write.mode("overwrite").format("delta").save(GOLD_PATH + "daily_revenue")
-print("✅ Gold Table (daily_revenue) Successfully Saved!")
+print(" Gold Table (daily_revenue) Successfully Saved!")
 
-# 4️⃣ अब CSV Export करें
 gold_daily_revenue.write.mode("overwrite").option("header", True).csv(GOLD_PATH + "export/daily_revenue")
-print("✅ CSV Export Complete! अब Databricks UI से CSV Download करें।")
-
-# COMMAND ----------
+print("CSV Export Complete!")
 
 from pyspark.sql.functions import sum, count, avg, col, round, desc, max as _max, count as _count, sum as _sum, datediff, current_date, when
 
-# Silver Table Read करें और Temp View बनाएं
 silver = spark.sql("SELECT * FROM workspace.default.transactions_enriched")
 silver.createOrReplaceTempView("silver_trn")
 
-print("⏳ सारी Gold Tables बन रही हैं और CSV Export हो रही हैं...")
+print("Gold Tables")
 
 # ---------- 1. DAILY REVENUE ----------
 gold_daily = silver.groupBy("transaction_date").agg(round(sum("final_amount"), 2).alias("revenue")).orderBy("transaction_date")
@@ -143,5 +121,4 @@ rfm_bucketed.write.mode("overwrite").option("header", True).csv(GOLD_PATH + "exp
 print("\n🎉 सभी 9 Gold Tables Delta में Save और CSV में Export हो गईं!")
 print("📁 अब Databricks UI में 'gold/export' फोल्डर से CSV Download करें!")
 
-# COMMAND ----------
 
