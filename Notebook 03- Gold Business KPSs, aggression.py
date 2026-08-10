@@ -11,13 +11,9 @@ TEMP_GCS_BUCKET = "ecommerce-databricks-temp"
 GCP_SECRET_SCOPE = "gcp-secrets"
 GCP_SECRET_KEY = "gcp-sa-key"
 
-# COMMAND ----------
-
 from pyspark.sql.functions import sum as _sum, countDistinct, avg, desc
 silver = spark.read.format("delta").load(SILVER_PATH + "transactions_enriched")
 silver.createOrReplaceTempView("silver_trn")
-
-# COMMAND ----------
 
 gold_daily_store_cat = spark.sql("""
     SELECT 
@@ -35,46 +31,30 @@ gold_daily_store_cat = spark.sql("""
 
 display(gold_daily_store_cat)
 
-
-# COMMAND ----------
-
-# 🎯 Gold Table को Delta Format में Save करें (कोई Error नहीं आएगा)
 gold_daily_store_cat.write.mode("overwrite").format("delta").save(GOLD_PATH + "daily_store_cat")
 
 print("✅ Gold Table (daily_store_cat) Successfully Saved to Delta!")
 
-# COMMAND ----------
-
-# MAGIC %fs ls /Volumes/workspace/default/workspace/gold/daily_store_cat
-
-# COMMAND ----------
-
 gold_top_customers = spark.sql("""
     SELECT 
         customer_id, 
-        customer_name,   -- 🔥 FIX: 'name' की जगह 'customer_name' (जो वास्तविक Column है)
+        customer_name,  
         region, 
         store_name, 
         ROUND(SUM(final_amount), 2) AS total_spent, 
         COUNT(*) AS txn_count 
     FROM silver_trn
-    GROUP BY customer_id, customer_name, region, store_name  -- 🔥 FIX: यहाँ भी 'customer_name'
+    GROUP BY customer_id, customer_name, region, store_name 
     ORDER BY total_spent DESC
 """)
 
 display(gold_top_customers)
 
-# Save to Gold Path
 gold_top_customers.write.mode("overwrite").format("delta").save(GOLD_PATH + "top_customers")
 
-print("✅ Top Customers Gold Table Saved Successfully!")
+print(" Top Customers Gold Table Saved Successfully!")
 
-# COMMAND ----------
-
-# Silver View की सारी Columns Check करें
 print(spark.sql("DESCRIBE silver_trn").show())
-
-# COMMAND ----------
 
 gold_promo_all = spark.sql("""
     SELECT 
@@ -88,8 +68,6 @@ gold_promo_all = spark.sql("""
 
 display(gold_promo_all)
 
-# COMMAND ----------
-
 gold_sentiment = spark.sql("""
                            select product_id, product_name, category, avg(rating) as avg_rating,
                            count(rating) as rating_count
@@ -99,30 +77,22 @@ gold_sentiment = spark.sql("""
                            """)
 gold_sentiment.display()
 
-# COMMAND ----------
-
 gold_sentiment.write.mode("overwrite") \
     .format("delta") \
     .save(GOLD_PATH + "product_sentiment")
 
-print(f"✅ Product Sentiment Gold Table Successfully Saved at: {GOLD_PATH}product_sentiment")
-
-# COMMAND ----------
+print(f" Product Sentiment Gold Table Successfully Saved at: {GOLD_PATH}product_sentiment")
 
 from pyspark.sql.functions import max as _max, count as _count, sum as _sum, datediff, current_date, col, when
 
-# 1️⃣ RFM Aggregation: हर Customer के लिए Last Transaction, Frequency, और Monetary Value निकालो
-# 🔥 FIX: 'name' की जगह 'customer_name' (क्योंकि Silver Table में यही Column है)
 rfm = (silver.groupBy("customer_id", "customer_name")
     .agg(
-        _max("transaction_date").alias("last_txn"),      # Recency के लिए आखिरी तारीख
-        _count("transaction_id").alias("frequency"),     # Frequency (कितनी बार खरीदा)
-        _sum("final_amount").alias("monetary")           # Monetary (कुल पैसा खर्च)
+        _max("transaction_date").alias("last_txn"),      
+        _count("transaction_id").alias("frequency"),   
+        _sum("final_amount").alias("monetary")       
     )
-    .withColumn("recency_days", datediff(current_date(), col("last_txn")))  # आज से कितने दिन पहले?
+    .withColumn("recency_days", datediff(current_date(), col("last_txn")))  
 )
-
-# 2️⃣ Bucketing: Recency, Frequency, Monetary को 3-3 Categories (बकेट) में बाँटो
 rfm_bucketed = (rfm
     .withColumn("recency_bucket", 
         when(col("recency_days") <= 30, "0-30")
@@ -141,10 +111,7 @@ rfm_bucketed = (rfm
     )
 )
 
-# 3️⃣ Result दिखाओ
 display(rfm_bucketed)
-
-# COMMAND ----------
 
 from pyspark.sql.window import Window
 from pyspark.sql.functions import lag, unix_timestamp, col
@@ -166,11 +133,9 @@ suspects = txn_with_prev.filter(
 suspects.write.mode("overwrite") \
     .format("delta") \
     .save(GOLD_PATH + "suspects")
-display(suspects)
 
-# COMMAND ----------
+display(suspects)
 
 display(txn_with_prev)
 
-# COMMAND ----------
 
